@@ -1,0 +1,10 @@
+{
+  "fishing_permit_code": "RLV-COASTAL-01",
+  "departure_site_code": "WENCHANG-LC2",
+  "landing_port_code": "SOUTH-SEA-RZ4",
+  "support_fleet_code": "SEA-GUARDIAN-01",
+  "vessel_registry_number": "RLV-BST-1001",
+  "vessel_class": "tianque-r1",
+  "minimum_catch_variance_kg": -0.8,
+  "maximum_catch_variance_kg": 0.8
+}

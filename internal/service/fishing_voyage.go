@@ -43,13 +43,16 @@ func (s *VoyageService) PlanFishingVoyage(ctx context.Context, input PlanFishing
 	if err != nil {
 		return domain.FishingVoyage{}, err
 	}
+	now := s.clock.Now()
 	var run domain.FishingVoyage
 	err = s.store.WithTx(ctx, func(tx repository.Tx) error {
 		if existing, err := tx.GetIdempotency(ctx, "plan-mission", input.IdempotencyKey); err == nil {
-			if existing.RequestHash != hash {
-				return domain.ConflictError{Resource: "idempotency_key", Reason: "request payload differs"}
+			if existing.ExpiresAt.After(now) {
+				if existing.RequestHash != hash {
+					return domain.ConflictError{Resource: "idempotency_key", Reason: "request payload differs"}
+				}
+				return json.Unmarshal(existing.ResponseBody, &run)
 			}
-			return json.Unmarshal(existing.ResponseBody, &run)
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
@@ -92,7 +95,6 @@ func (s *VoyageService) PlanFishingVoyage(ctx context.Context, input PlanFishing
 		if err := support_fleet.EligibleFor(input.DepartureWindowOpensAt, 1); err != nil {
 			return err
 		}
-		now := s.clock.Now()
 		run = domain.FishingVoyage{ID: identity.New("mission"), FishingPermitID: input.FishingPermitID, DeparturePortID: input.DeparturePortID,
 			LandingPortID: input.LandingPortID, SupportFleetID: input.SupportFleetID, VoyageCode: strings.TrimSpace(input.VoyageCode),
 			State: domain.FishingVoyagePlanned, DepartureWindowOpensAt: input.DepartureWindowOpensAt.UTC(), LandingDeadlineAt: input.LandingDeadlineAt.UTC(), Version: 1, CreatedAt: now, UpdatedAt: now}

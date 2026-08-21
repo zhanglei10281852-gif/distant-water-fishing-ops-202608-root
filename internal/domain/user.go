@@ -84,3 +84,7 @@ func (p Principal) Can(roles ...Role) bool {
 	}
 	return false
 }
+
+func (u User) CanReceiveCatchLandingReview() bool {
+	return u.Status == UserActive && u.Role == RoleFisheriesOfficer
+}

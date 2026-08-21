@@ -216,7 +216,7 @@ func TestFishingVoyageClosureRequiresResolvedOperationalReviews(t *testing.T) {
 	handoff, err := f.services.Handoffs.CreateCatchLandingTask(f.as(f.vessel_captain), CreateCatchLandingTaskInput{
 		FishingVoyageID:    run.ID,
 		CoordinatorID:      f.voyage_coordinator.UserID,
-		FisheriesOfficerID: f.vessel_captain.UserID,
+		FisheriesOfficerID: f.fisheries_officer.UserID,
 		LandingStation:     "Recovery deck 2",
 	})
 	if err != nil {
@@ -225,7 +225,7 @@ func TestFishingVoyageClosureRequiresResolvedOperationalReviews(t *testing.T) {
 	if _, err := f.services.FishingVoyages.CloseFishingVoyage(f.as(f.voyage_coordinator), run.ID); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("close with pending handoff error = %v, want conflict", err)
 	}
-	if _, err := f.services.Handoffs.ResolveCatchLandingTask(f.as(f.vessel_captain), handoff.ID, true, "deck transfer complete"); err != nil {
+	if _, err := f.services.Handoffs.ResolveCatchLandingTask(f.as(f.fisheries_officer), handoff.ID, true, "deck transfer complete"); err != nil {
 		t.Fatalf("resolve handoff: %v", err)
 	}
 	if _, err := f.services.FishingVoyages.CloseFishingVoyage(f.as(f.voyage_coordinator), run.ID); err != nil {
@@ -246,7 +246,7 @@ func TestHandoffsOnlyReceiverCanResolve(t *testing.T) {
 	if _, err := f.services.FishingVoyages.DepartureFishingVoyage(f.as(f.vessel_captain), run.ID); err != nil {
 		t.Fatal(err)
 	}
-	catch_landing_task, err := f.services.Handoffs.CreateCatchLandingTask(f.as(f.vessel_captain), CreateCatchLandingTaskInput{FishingVoyageID: run.ID, CoordinatorID: f.voyage_coordinator.UserID, FisheriesOfficerID: f.vessel_captain.UserID, LandingStation: "Dock 2"})
+	catch_landing_task, err := f.services.Handoffs.CreateCatchLandingTask(f.as(f.vessel_captain), CreateCatchLandingTaskInput{FishingVoyageID: run.ID, CoordinatorID: f.voyage_coordinator.UserID, FisheriesOfficerID: f.fisheries_officer.UserID, LandingStation: "Dock 2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestHandoffsOnlyReceiverCanResolve(t *testing.T) {
 	if _, err := f.services.Handoffs.ResolveCatchLandingTask(f.as(other), catch_landing_task.ID, true, "wrong actor"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("wrong actor error = %v", err)
 	}
-	if _, err := f.services.Handoffs.ResolveCatchLandingTask(f.as(f.vessel_captain), catch_landing_task.ID, true, "seal intact"); err != nil {
+	if _, err := f.services.Handoffs.ResolveCatchLandingTask(f.as(f.fisheries_officer), catch_landing_task.ID, true, "seal intact"); err != nil {
 		t.Fatal(err)
 	}
 }

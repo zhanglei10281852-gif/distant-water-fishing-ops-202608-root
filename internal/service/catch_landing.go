@@ -39,6 +39,13 @@ func (s *HandoffService) CreateCatchLandingTask(ctx context.Context, input Creat
 		if run.State != domain.FishingVoyageDeparted && run.State != domain.FishingVoyageLanded {
 			return domain.ConflictError{Resource: "fishing_voyage", Reason: "handoff review requires a departed or landed voyage"}
 		}
+		receiver, err := tx.GetUser(ctx, strings.TrimSpace(input.FisheriesOfficerID))
+		if err != nil {
+			return err
+		}
+		if !receiver.CanReceiveCatchLandingReview() {
+			return domain.ConflictError{Resource: "catch_landing_task", Reason: "receiver must be an active fisheries officer"}
+		}
 		if _, err := tx.GetPendingCatchLanding(ctx, run.ID); err == nil {
 			return domain.ConflictError{Resource: "catch_landing_task", Reason: "mission already has a pending handoff review"}
 		} else if !isNotFound(err) {
@@ -60,7 +67,7 @@ func (s *HandoffService) CreateCatchLandingTask(ctx context.Context, input Creat
 
 func (s *HandoffService) ResolveCatchLandingTask(ctx context.Context, catch_landing_taskID string, accepted bool, note string) (domain.CatchLandingTask, error) {
 	principal, _ := principalOrEmpty(ctx)
-	if err := requireRole(principal, domain.RoleVesselCaptain, domain.RoleVoyageCoordinator); err != nil {
+	if err := requireRole(principal, domain.RoleFisheriesOfficer, domain.RoleVoyageCoordinator); err != nil {
 		return domain.CatchLandingTask{}, err
 	}
 	var result domain.CatchLandingTask

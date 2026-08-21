@@ -224,6 +224,31 @@ func TestIdempotencyRecordCopiesResponse(t *testing.T) {
 	}
 }
 
+func TestExpiredIdempotencyRecordCanBeReplaced(t *testing.T) {
+	store, ctx, now := testStore(t)
+	expired := repository.IdempotencyRecord{Scope: "voyage", Key: "reuse", RequestHash: "old", ResponseCode: 201, ResponseBody: []byte("old response"), ExpiresAt: now, CreatedAt: now.Add(-time.Hour)}
+	replacement := repository.IdempotencyRecord{Scope: "voyage", Key: "reuse", RequestHash: "new", ResponseCode: 201, ResponseBody: []byte("new response"), ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now.Add(time.Minute)}
+	if err := store.WithTx(ctx, func(tx repository.Tx) error {
+		if err := tx.PutIdempotency(ctx, expired); err != nil {
+			return err
+		}
+		return tx.PutIdempotency(ctx, replacement)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got repository.IdempotencyRecord
+	if err := store.Read(ctx, func(reader repository.Reader) error {
+		var err error
+		got, err = reader.GetIdempotency(ctx, replacement.Scope, replacement.Key)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got.RequestHash != replacement.RequestHash || string(got.ResponseBody) != string(replacement.ResponseBody) || !got.ExpiresAt.Equal(replacement.ExpiresAt) {
+		t.Fatalf("replacement record = %+v", got)
+	}
+}
+
 func TestOutboxClaimRetryAndCompletion(t *testing.T) {
 	store, ctx, now := testStore(t)
 	job := domain.OutboxJob{ID: "job_1", Kind: "fishing_voyage_planned", AggregateID: "ship_1", Payload: []byte("{}"), Status: domain.JobPending, MaxAttempts: 2, AvailableAt: now, CreatedAt: now, UpdatedAt: now}

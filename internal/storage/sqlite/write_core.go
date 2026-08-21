@@ -241,7 +241,11 @@ func (q *queries) InsertAuditEvent(ctx context.Context, event domain.AuditEvent)
 
 func (q *queries) PutIdempotency(ctx context.Context, record repository.IdempotencyRecord) error {
 	_, err := q.q.ExecContext(ctx, `INSERT INTO idempotency_records(scope, idempotency_key, request_hash,
-        response_code, response_body, expires_at, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, record.Scope,
+        response_code, response_body, expires_at, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(scope, idempotency_key) DO UPDATE SET request_hash = excluded.request_hash,
+		response_code = excluded.response_code, response_body = excluded.response_body,
+		expires_at = excluded.expires_at, created_at = excluded.created_at
+		WHERE idempotency_records.expires_at <= excluded.created_at`, record.Scope,
 		record.Key, record.RequestHash, record.ResponseCode, append([]byte(nil), record.ResponseBody...),
 		formatTime(record.ExpiresAt), formatTime(record.CreatedAt))
 	return translateError("put idempotency record", err)

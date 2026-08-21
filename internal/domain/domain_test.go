@@ -93,6 +93,20 @@ func TestExpiredFishingVesselCanOnlyBeDestroyedOrQuarantined(t *testing.T) {
 	}
 }
 
+func TestFishingVesselQuarantineBelongsToCatchAnomaly(t *testing.T) {
+	vessel := FishingVessel{State: FishingVesselQuarantined, QuarantineNote: "catch anomaly anomaly-17"}
+	if !vessel.IsQuarantinedForCatchAnomaly("anomaly-17") {
+		t.Fatal("matching catch anomaly quarantine was not recognized")
+	}
+	if vessel.IsQuarantinedForCatchAnomaly("anomaly-18") {
+		t.Fatal("quarantine leaked to another catch anomaly")
+	}
+	vessel.QuarantineNote = "certificate inspection hold"
+	if vessel.IsQuarantinedForCatchAnomaly("anomaly-17") {
+		t.Fatal("non-catch quarantine was treated as owned by anomaly")
+	}
+}
+
 func TestFishingVoyageTransitionSetsTimestamps(t *testing.T) {
 	now := time.Date(2026, 8, 18, 8, 0, 0, 0, time.UTC)
 	run := FishingVoyage{State: FishingVoyagePlanned, DepartureWindowOpensAt: now, LandingDeadlineAt: now.Add(2 * time.Hour)}

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -88,4 +89,9 @@ func (b FishingVessel) Clone() FishingVessel { return b }
 
 func (b FishingVessel) IsUsableAt(at time.Time) bool {
 	return b.ExpiresAt.After(at) && b.State != FishingVesselRetired
+}
+
+func (b FishingVessel) IsQuarantinedForCatchAnomaly(anomalyID string) bool {
+	expected := fmt.Sprintf("catch anomaly %s", strings.TrimSpace(anomalyID))
+	return b.State == FishingVesselQuarantined && anomalyID != "" && b.QuarantineNote == expected
 }

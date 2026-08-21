@@ -76,13 +76,13 @@ func (s *ReviewService) Decide(ctx context.Context, input DecideInput) (domain.C
 		for _, batch := range items {
 			switch input.Decision {
 			case domain.CatchAnomalyCleared:
-				if batch.State != domain.FishingVesselQuarantined {
+				if !batch.IsQuarantinedForCatchAnomaly(catch_anomaly.ID) {
 					continue
 				}
 				batch.State = domain.FishingVesselReinspected
 				batch.QuarantineNote = ""
 			case domain.CatchAnomalyRejected:
-				if batch.State != domain.FishingVesselQuarantined {
+				if !batch.IsQuarantinedForCatchAnomaly(catch_anomaly.ID) {
 					continue
 				}
 				batch.State = domain.FishingVesselRetired

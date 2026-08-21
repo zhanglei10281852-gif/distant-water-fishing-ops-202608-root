@@ -19,7 +19,7 @@ func (q *queries) GetPlatformSummary(ctx context.Context) (repository.PlatformSu
 		{"at_sea fishing vessels", &summary.FishingVesselsMaterializing, `SELECT COUNT(*) FROM fishing_vessels WHERE state = 'at_sea'`},
 		{"quarantined fishing vessels", &summary.FishingVesselsQuarantined, `SELECT COUNT(*) FROM fishing_vessels WHERE state = 'quarantined'`},
 		{"standby support fleets", &summary.SupportFleetsStandby, `SELECT COUNT(*) FROM support_fleets WHERE state = 'standby'`},
-		{"active voyage requests", &summary.FishingVoyagesActive, `SELECT COUNT(*) FROM fishing_voyages WHERE state IN ('planned', 'cleared', 'at_sea', 'recovered')`},
+		{"active voyage requests", &summary.FishingVoyagesActive, `SELECT COUNT(*) FROM fishing_voyages WHERE state IN ('planned', 'cleared', 'at_sea', 'landed')`},
 		{"open catch_anomalies", &summary.OpenLandingAnomalies, `SELECT COUNT(*) FROM catch_anomalies WHERE status IN ('open', 'reviewing')`},
 		{"pending catch_landing_tasks", &summary.PendingCatchLandings, `SELECT COUNT(*) FROM catch_landing_tasks WHERE status = 'pending'`},
 		{"failed jobs", &summary.FailedJobs, `SELECT COUNT(*) FROM outbox_jobs WHERE status IN ('failed', 'dead')`},

@@ -150,7 +150,7 @@ type PlatformSummary struct {
 	SupportFleetsStandby        int `json:"support_fleets_standby"`
 	FishingVoyagesActive        int `json:"fishing_voyages_active"`
 	OpenLandingAnomalies        int `json:"open_catch_anomalies"`
-	PendingCatchLandings        int `json:"pending_recovery_handoffs"`
+	PendingCatchLandings        int `json:"pending_catch_landings"`
 	FailedJobs                  int `json:"failed_jobs"`
 }
 

@@ -169,7 +169,7 @@ func (s *VoyageService) DepartureFishingVoyage(ctx context.Context, requestID st
 }
 
 func (s *VoyageService) ConfirmFishingVoyageLanding(ctx context.Context, requestID string) (domain.FishingVoyage, error) {
-	return s.transitionAny(ctx, requestID, domain.FishingVoyageLanded, []domain.Role{domain.RoleVesselCaptain, domain.RoleVoyageCoordinator}, "fishing_voyage_recovered")
+	return s.transitionAny(ctx, requestID, domain.FishingVoyageLanded, []domain.Role{domain.RoleVesselCaptain, domain.RoleVoyageCoordinator}, "fishing_voyage_landed")
 }
 
 func (s *VoyageService) CloseFishingVoyage(ctx context.Context, requestID string) (domain.FishingVoyage, error) {

@@ -22,7 +22,7 @@ func (q *queries) GetVoyageReadiness(ctx context.Context, requestID string) (dom
 	}
 	if err := q.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM fishing_voyage_vessels ri JOIN fishing_vessels s ON s.id = ri.fishing_vessel_id
         WHERE ri.request_id = ? AND s.state IN ('landed', 'reinspected', 'retired', 'quarantined')`, requestID).Scan(&report.LandedFishingVesselCount); err != nil {
-		return domain.VoyageReadiness{}, translateError("count recovered fishing vessels", err)
+		return domain.VoyageReadiness{}, translateError("count landed fishing vessels", err)
 	}
 	if err := q.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM fishing_voyage_vessels ri JOIN fishing_vessels s ON s.id = ri.fishing_vessel_id
 		WHERE ri.request_id = ? AND s.state = 'reinspected'`, requestID).Scan(&report.ReinspectedFishingVesselCount); err != nil {

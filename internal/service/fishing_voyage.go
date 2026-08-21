@@ -74,11 +74,11 @@ func (s *VoyageService) PlanFishingVoyage(ctx context.Context, input PlanFishing
 		if err := domain.ValidateRoute(source, target); err != nil {
 			return err
 		}
-		businessDay, err := source.BusinessDay(input.DepartureWindowOpensAt)
+		_, dayStartsAt, dayEndsAt, err := source.OperatingDayWindow(input.DepartureWindowOpensAt)
 		if err != nil {
 			return err
 		}
-		count, err := tx.CountPortFacilityFishingVoyagesForBusinessDay(ctx, source.ID, businessDay)
+		count, err := tx.CountPortFacilityFishingVoyagesForWindow(ctx, source.ID, dayStartsAt, dayEndsAt)
 		if err != nil {
 			return err
 		}

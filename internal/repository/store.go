@@ -35,7 +35,7 @@ type Reader interface {
 	ListLandingAnomalies(ctx context.Context, filter CatchAnomalyFilter) (CatchAnomalyPage, error)
 	ListAuditEvents(ctx context.Context, filter AuditFilter) (AuditPage, error)
 	GetIdempotency(ctx context.Context, scope, key string) (IdempotencyRecord, error)
-	CountPortFacilityFishingVoyagesForBusinessDay(ctx context.Context, port_facilityID, businessDay string) (int, error)
+	CountPortFacilityFishingVoyagesForWindow(ctx context.Context, portFacilityID string, startsAt, endsAt time.Time) (int, error)
 }
 
 type Tx interface {

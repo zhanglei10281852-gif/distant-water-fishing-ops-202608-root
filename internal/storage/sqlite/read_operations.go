@@ -110,10 +110,11 @@ func (q *queries) GetIdempotency(ctx context.Context, scope, key string) (reposi
 	return record, nil
 }
 
-func (q *queries) CountPortFacilityFishingVoyagesForBusinessDay(ctx context.Context, port_facilityID, businessDay string) (int, error) {
+func (q *queries) CountPortFacilityFishingVoyagesForWindow(ctx context.Context, portFacilityID string, startsAt, endsAt time.Time) (int, error) {
 	var count int
 	err := q.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM fishing_voyages
-        WHERE departure_port_id = ? AND substr(departure_window_opens_at, 1, 10) = ? AND state != 'cancelled'`, port_facilityID, businessDay).Scan(&count)
+		WHERE departure_port_id = ? AND departure_window_opens_at >= ? AND departure_window_opens_at < ?
+		AND state != 'cancelled'`, portFacilityID, formatTime(startsAt), formatTime(endsAt)).Scan(&count)
 	if err != nil {
 		return 0, translateError("count port_facility fishing_voyages", err)
 	}

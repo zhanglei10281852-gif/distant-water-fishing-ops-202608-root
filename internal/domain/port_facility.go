@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -45,15 +46,25 @@ func (s PortFacility) Validate() error {
 }
 
 func (s PortFacility) BusinessDay(at time.Time) (string, error) {
+	day, _, _, err := s.OperatingDayWindow(at)
+	return day, err
+}
+
+func (s PortFacility) OperatingDayWindow(at time.Time) (string, time.Time, time.Time, error) {
 	loc, err := time.LoadLocation(s.Timezone)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, time.Time{}, err
 	}
 	local := at.In(loc)
 	if local.Hour() < s.CutoffHour {
 		local = local.AddDate(0, 0, -1)
 	}
-	return local.Format("2006-01-02"), nil
+	day := local.Format("2006-01-02")
+	start, err := time.ParseInLocation("2006-01-02 15", day+" "+fmt.Sprintf("%02d", s.CutoffHour), loc)
+	if err != nil {
+		return "", time.Time{}, time.Time{}, err
+	}
+	return day, start.UTC(), start.AddDate(0, 0, 1).UTC(), nil
 }
 
 func (s PortFacility) IsOpen() bool { return s.Status == PortFacilityActive }

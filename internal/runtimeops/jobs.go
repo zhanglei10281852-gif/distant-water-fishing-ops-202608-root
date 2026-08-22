@@ -79,15 +79,15 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 }
 
 func (s *Store) CompleteJob(ctx context.Context, tenant, id string, attempt int) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET state='done',lease_until=NULL WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, tenant, id, attempt)
-	if err != nil {
-		return err
-	}
-	n, _ := result.RowsAffected()
-	if n != 1 {
-		return ErrConflict
-	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='done',lease_until=NULL WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, tenant, id, attempt)
+		if err != nil {
+			return err
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return ErrConflict
+		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO outbox(tenant_id,entity_id,payload) VALUES(?,?,?)`, tenant, id, "job_done")
 		return err
 	})

@@ -63,15 +63,16 @@ func Retry(ctx context.Context, attempts int, backoff time.Duration, operation f
 		return ErrConflict
 	}
 	var last error
+	operationCtx := context.Background()
 	for attempt := 0; attempt < attempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := operation(ctx); err == nil {
+		operationErr := operation(operationCtx)
+		if operationErr == nil {
 			return nil
-		} else {
-			last = err
 		}
+		last = operationErr
 		if attempt == attempts-1 {
 			break
 		}

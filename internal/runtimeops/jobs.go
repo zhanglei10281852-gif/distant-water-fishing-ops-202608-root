@@ -94,10 +94,12 @@ func (s *Store) CompleteJob(ctx context.Context, tenant, id string, attempt int)
 }
 
 func (s *Store) FailJob(ctx context.Context, tenant, id string, attempt int, now time.Time) error {
-	operationCtx := context.Background()
-	return withTx(operationCtx, s.db, func(tx *sql.Tx) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return withTx(ctx, s.db, func(tx *sql.Tx) error {
 		var max int
-		if err := tx.QueryRowContext(operationCtx, `SELECT max_attempts FROM jobs WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, tenant, id, attempt).Scan(&max); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT max_attempts FROM jobs WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, tenant, id, attempt).Scan(&max); err != nil {
 			return mapError(err)
 		}
 		state := "failed"
@@ -105,7 +107,7 @@ func (s *Store) FailJob(ctx context.Context, tenant, id string, attempt int, now
 			state = "dead"
 		}
 		next := now.Add(time.Duration(attempt) * time.Minute)
-		result, err := tx.ExecContext(operationCtx, `UPDATE jobs SET state=?,available_at=?,lease_until=NULL WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, state, unix(next), tenant, id, attempt)
+		result, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?,available_at=?,lease_until=NULL WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, state, unix(next), tenant, id, attempt)
 		if err != nil {
 			return err
 		}

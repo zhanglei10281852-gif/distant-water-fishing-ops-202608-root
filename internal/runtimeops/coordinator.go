@@ -52,7 +52,20 @@ func (p *Pipeline) Snapshot() map[string]bool {
 func (p *Pipeline) Restore(snapshot map[string]bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.completed = snapshot
+	// Hold an independent copy of the external input so the pipeline owns its
+	// state exclusively. Callers may keep reusing and mutating the snapshot map
+	// they passed in; those mutations must not leak into the pipeline, otherwise
+	// steps appear completed without ever running. False entries are preserved
+	// verbatim so the normal restore semantics for an unfinished step are kept.
+	if snapshot == nil {
+		p.completed = map[string]bool{}
+		return
+	}
+	out := make(map[string]bool, len(snapshot))
+	for key, value := range snapshot {
+		out[key] = value
+	}
+	p.completed = out
 }
 
 func Retry(ctx context.Context, attempts int, backoff time.Duration, operation func(context.Context) error) error {

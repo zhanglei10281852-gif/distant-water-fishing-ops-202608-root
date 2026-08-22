@@ -8,16 +8,30 @@ import (
 
 func (s *Store) SaveCommand(ctx context.Context, c Command) error {
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		var hash string
-		var response []byte
-		err := tx.QueryRowContext(ctx, `SELECT request_hash,response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, c.TenantID, c.Method, c.Path, c.Key).Scan(&hash, &response)
-		if err == nil {
+		rows, err := tx.QueryContext(ctx, `SELECT tenant_id,request_hash,response FROM commands WHERE key=? ORDER BY tenant_id LIMIT 1`, c.Key)
+		if err != nil {
+			return err
+		}
+		if rows.Next() {
+			var storedTenant, hash string
+			var response []byte
+			if err = rows.Scan(&storedTenant, &hash, &response); err != nil {
+				rows.Close()
+				return err
+			}
+			if err = rows.Close(); err != nil {
+				return err
+			}
 			if hash != c.RequestHash {
 				return ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err = rows.Close(); err != nil {
 			return err
 		}
 		copyResponse := append([]byte(nil), c.Response...)

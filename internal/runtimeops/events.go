@@ -91,8 +91,14 @@ func (s *Store) ListEvents(ctx context.Context, tenant, status string, page, siz
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE `+where, args...).Scan(&total); err != nil {
 		return EventPage{}, err
 	}
-	args = append(args, size, (page-1)*size)
-	rows, err := s.db.QueryContext(ctx, `SELECT id,tenant_id,batch_id,status,magnitude FROM events WHERE `+where+` ORDER BY id LIMIT ? OFFSET ?`, args...)
+	itemWhere := `1=1`
+	itemArgs := []any{}
+	if status != "" {
+		itemWhere += ` AND status=?`
+		itemArgs = append(itemArgs, status)
+	}
+	itemArgs = append(itemArgs, size, (page-1)*size)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,tenant_id,batch_id,status,magnitude FROM events WHERE `+itemWhere+` ORDER BY id LIMIT ? OFFSET ?`, itemArgs...)
 	if err != nil {
 		return EventPage{}, err
 	}

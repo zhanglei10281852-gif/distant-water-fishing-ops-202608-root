@@ -23,18 +23,18 @@ func (s *Store) Permit(ctx context.Context, tenant, id string) (Permit, error) {
 }
 
 func (s *Store) ApprovePermit(ctx context.Context, tenant, id string, expected int64) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE permits SET state='approved',version=version+1 WHERE tenant_id=? AND id=? AND state='pending' AND version=?`, tenant, id, expected)
-	if err != nil {
-		return err
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return ErrConflict
-	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `UPDATE permits SET state='approved',version=version+1 WHERE tenant_id=? AND id=? AND state='pending' AND version=?`, tenant, id, expected)
+		if err != nil {
+			return err
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return ErrConflict
+		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO audit(tenant_id,entity_id,action) VALUES(?,?,?)`, tenant, id, "permit_approved"); err != nil {
 			return fmt.Errorf("write approval audit: %w", err)
 		}

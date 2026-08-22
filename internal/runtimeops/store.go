@@ -50,6 +50,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS permits(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,slot TEXT NOT NULL,state TEXT NOT NULL,version INTEGER NOT NULL)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS active_slot ON permits(tenant_id,slot) WHERE state='executing'`,
 		`CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,tenant_id TEXT NOT NULL,entity_id TEXT NOT NULL,action TEXT NOT NULL)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS audit_entity_action ON audit(tenant_id,entity_id,action)`,
 		`CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY AUTOINCREMENT,tenant_id TEXT NOT NULL,entity_id TEXT NOT NULL,payload TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS batches(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,state TEXT NOT NULL,event_count INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS events(id TEXT NOT NULL,tenant_id TEXT NOT NULL,batch_id TEXT NOT NULL,status TEXT NOT NULL,magnitude REAL NOT NULL,PRIMARY KEY(tenant_id,id),FOREIGN KEY(batch_id) REFERENCES batches(id))`,

@@ -68,6 +68,34 @@ func TestJobHappyPath(t *testing.T) {
 	}
 }
 
+func TestListEventsTotalScopedToTenant(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if err := s.CreateBatch(ctx, "fleetA", "ba", "collecting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvent(ctx, Event{ID: "a1", TenantID: "fleetA", BatchID: "ba", Status: "unclassified", Magnitude: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateBatch(ctx, "fleetB", "bb", "collecting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvent(ctx, Event{ID: "b1", TenantID: "fleetB", BatchID: "bb", Status: "unclassified", Magnitude: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvent(ctx, Event{ID: "b2", TenantID: "fleetB", BatchID: "bb", Status: "unclassified", Magnitude: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := s.ListEvents(ctx, "fleetA", "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Total != 1 {
+		t.Fatalf("fleetA page: items=%d total=%d, want items=1 total=1", len(page.Items), page.Total)
+	}
+}
+
 func TestCommandHappyPath(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

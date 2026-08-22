@@ -87,14 +87,8 @@ func (s *Store) ListEvents(ctx context.Context, tenant, status string, page, siz
 		where += ` AND status=?`
 		args = append(args, status)
 	}
-	countWhere := `1=1`
-	countArgs := []any{}
-	if status != "" {
-		countWhere += ` AND status=?`
-		countArgs = append(countArgs, status)
-	}
 	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE `+countWhere, countArgs...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE `+where, args...).Scan(&total); err != nil {
 		return EventPage{}, err
 	}
 	args = append(args, size, (page-1)*size)

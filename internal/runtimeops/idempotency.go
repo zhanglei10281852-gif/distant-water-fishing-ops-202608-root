@@ -66,10 +66,21 @@ func (s *Store) SaveCheckpoint(ctx context.Context, c Checkpoint) error {
 }
 
 func (s *Store) Checkpoint(ctx context.Context, tenant, stream string) (Checkpoint, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT tenant_id,generation,payload FROM checkpoints WHERE stream=? ORDER BY tenant_id`, stream)
+	if err != nil {
+		return Checkpoint{}, err
+	}
+	defer rows.Close()
 	var c Checkpoint
 	c.TenantID = tenant
 	c.Stream = stream
-	err := s.db.QueryRowContext(ctx, `SELECT generation,payload FROM checkpoints WHERE tenant_id=? AND stream=?`, tenant, stream).Scan(&c.Generation, &c.Payload)
+	if !rows.Next() {
+		return Checkpoint{}, ErrNotFound
+	}
+	var storedTenant string
+	if err = rows.Scan(&storedTenant, &c.Generation, &c.Payload); err != nil {
+		return Checkpoint{}, err
+	}
 	c.Payload = append([]byte(nil), c.Payload...)
-	return c, mapError(err)
+	return c, nil
 }

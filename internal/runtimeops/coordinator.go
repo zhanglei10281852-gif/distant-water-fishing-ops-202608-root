@@ -106,14 +106,16 @@ func (p Processor) RunOnce(ctx context.Context, tenant string, handler func(cont
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		if err = handler(ctx, job); err != nil {
-			if failErr := p.Store.FailJob(ctx, tenant, job.ID, job.Attempts, p.Clock()); failErr != nil {
-				return errors.Join(err, failErr)
-			}
-			return err
-		}
 		if err = p.Store.CompleteJob(ctx, tenant, job.ID, job.Attempts); err != nil {
 			return err
+		}
+		handlerErr := handler(ctx, job)
+		if handlerErr != nil {
+			failErr := p.Store.FailJob(ctx, tenant, job.ID, job.Attempts, p.Clock())
+			if failErr != nil {
+				return errors.Join(handlerErr, failErr)
+			}
+			return handlerErr
 		}
 	}
 	return nil

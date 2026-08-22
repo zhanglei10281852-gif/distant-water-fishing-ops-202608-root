@@ -11,26 +11,24 @@ func (s *Store) CreateBatch(ctx context.Context, tenant, id, state string) error
 }
 
 func (s *Store) RecordEvent(ctx context.Context, event Event) error {
+	var state string
+	if err := s.db.QueryRowContext(ctx, `SELECT state FROM batches WHERE id=? AND tenant_id=?`, event.BatchID, event.TenantID).Scan(&state); err != nil {
+		return mapError(err)
+	}
+	if state != "collecting" {
+		return ErrConflict
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE batches SET event_count=event_count+1 WHERE id=? AND tenant_id=? AND state='collecting'`, event.BatchID, event.TenantID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows != 1 {
+		return ErrConflict
+	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		var state string
-		if err := tx.QueryRowContext(ctx, `SELECT state FROM batches WHERE id=? AND tenant_id=?`, event.BatchID, event.TenantID).Scan(&state); err != nil {
-			return mapError(err)
-		}
-		if state != "collecting" {
-			return ErrConflict
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO events(id,tenant_id,batch_id,status,magnitude) VALUES(?,?,?,?,?)`, event.ID, event.TenantID, event.BatchID, event.Status, event.Magnitude); err != nil {
-			return err
-		}
-		result, err := tx.ExecContext(ctx, `UPDATE batches SET event_count=event_count+1 WHERE id=? AND tenant_id=? AND state='collecting'`, event.BatchID, event.TenantID)
-		if err != nil {
-			return err
-		}
-		rows, _ := result.RowsAffected()
-		if rows != 1 {
-			return ErrConflict
-		}
-		return nil
+		_, err = tx.ExecContext(ctx, `INSERT INTO events(id,tenant_id,batch_id,status,magnitude) VALUES(?,?,?,?,?)`, event.ID, event.TenantID, event.BatchID, event.Status, event.Magnitude)
+		return err
 	})
 }
 

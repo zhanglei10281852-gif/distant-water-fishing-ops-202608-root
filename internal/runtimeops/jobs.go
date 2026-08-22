@@ -52,24 +52,12 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 		}
 		until := now.Add(lease)
 		for _, id := range ids {
-			result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now))
+			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now)); err != nil {
+				return err
+			}
+			j, err := scanJob(tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id))
 			if err != nil {
 				return err
-			}
-			n, _ := result.RowsAffected()
-			if n != 1 {
-				continue
-			}
-			var j Job
-			var available int64
-			var leaseValue *int64
-			if err = tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id).Scan(&j.ID, &j.TenantID, &j.State, &j.Payload, &j.Attempts, &j.MaxAttempts, &available, &leaseValue); err != nil {
-				return err
-			}
-			j.AvailableAt = fromUnix(available)
-			if leaseValue != nil {
-				t := fromUnix(*leaseValue)
-				j.LeaseUntil = &t
 			}
 			out = append(out, j)
 		}

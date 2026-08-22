@@ -39,7 +39,15 @@ func (p *Pipeline) Run(ctx context.Context, steps map[string]Step, order []strin
 	return nil
 }
 
-func (p *Pipeline) Snapshot() map[string]bool { p.mu.Lock(); defer p.mu.Unlock(); return p.completed }
+func (p *Pipeline) Snapshot() map[string]bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	snapshot := make(map[string]bool, len(p.completed))
+	for key, value := range p.completed {
+		snapshot[key] = value
+	}
+	return snapshot
+}
 
 func (p *Pipeline) Restore(snapshot map[string]bool) {
 	p.mu.Lock()

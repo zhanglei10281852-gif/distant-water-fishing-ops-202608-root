@@ -117,9 +117,31 @@ func (s *Store) FailJob(ctx context.Context, tenant, id string, attempt int, now
 }
 
 func (s *Store) ReclaimJobs(ctx context.Context, tenant string, now time.Time) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET state='failed',lease_until=NULL WHERE tenant_id=? AND state='running' AND lease_until<=?`, tenant, unix(now))
+	rows, err := s.db.QueryContext(ctx, `SELECT id,tenant_id FROM jobs WHERE state='running' AND lease_until<=?`, unix(now))
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	type expiredJob struct{ id, tenant string }
+	expired := []expiredJob{}
+	for rows.Next() {
+		var job expiredJob
+		if err = rows.Scan(&job.id, &job.tenant); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		expired = append(expired, job)
+	}
+	if err = rows.Close(); err != nil {
+		return 0, err
+	}
+	var reclaimed int64
+	for _, job := range expired {
+		result, updateErr := s.db.ExecContext(ctx, `UPDATE jobs SET state='failed',lease_until=NULL WHERE id=? AND tenant_id=? AND state='running'`, job.id, job.tenant)
+		if updateErr != nil {
+			return reclaimed, updateErr
+		}
+		count, _ := result.RowsAffected()
+		reclaimed += count
+	}
+	return reclaimed, nil
 }

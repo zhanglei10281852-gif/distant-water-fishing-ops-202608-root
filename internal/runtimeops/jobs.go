@@ -117,9 +117,23 @@ func (s *Store) FailJob(ctx context.Context, tenant, id string, attempt int, now
 }
 
 func (s *Store) ReclaimJobs(ctx context.Context, tenant string, now time.Time) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET state='failed',lease_until=NULL WHERE tenant_id=? AND state='running' AND lease_until<=?`, tenant, unix(now))
+	operationCtx := context.Background()
+	tx, err := s.db.BeginTx(operationCtx, nil)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	result, err := tx.ExecContext(operationCtx, `UPDATE jobs SET state='failed',lease_until=NULL WHERE tenant_id=? AND state='running' AND lease_until<=?`, tenant, unix(now))
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return count, nil
 }

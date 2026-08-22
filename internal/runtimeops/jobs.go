@@ -34,7 +34,7 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 	}
 	out := []Job{}
 	err := withTx(ctx, s.db, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM jobs WHERE tenant_id=? AND state IN ('pending','failed') AND available_at<=? AND (lease_until IS NULL OR lease_until<=?) ORDER BY available_at,id LIMIT ?`, tenant, unix(now), unix(now), limit)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM jobs WHERE state IN ('pending','failed') AND available_at<=? AND (lease_until IS NULL OR lease_until<=?) ORDER BY available_at,id LIMIT ?`, unix(now), unix(now), limit)
 		if err != nil {
 			return err
 		}
@@ -60,16 +60,9 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 			if n != 1 {
 				continue
 			}
-			var j Job
-			var available int64
-			var leaseValue *int64
-			if err = tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id).Scan(&j.ID, &j.TenantID, &j.State, &j.Payload, &j.Attempts, &j.MaxAttempts, &available, &leaseValue); err != nil {
+			j, err := scanJob(tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id))
+			if err != nil {
 				return err
-			}
-			j.AvailableAt = fromUnix(available)
-			if leaseValue != nil {
-				t := fromUnix(*leaseValue)
-				j.LeaseUntil = &t
 			}
 			out = append(out, j)
 		}

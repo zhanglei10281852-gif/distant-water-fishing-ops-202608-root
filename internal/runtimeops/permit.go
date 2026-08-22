@@ -43,29 +43,29 @@ func (s *Store) ApprovePermit(ctx context.Context, tenant, id string, expected i
 }
 
 func (s *Store) ExecutePermit(ctx context.Context, tenant, id string, expected int64) error {
+	var slot, state string
+	if err := s.db.QueryRowContext(ctx, `SELECT slot,state FROM permits WHERE tenant_id=? AND id=?`, tenant, id).Scan(&slot, &state); err != nil {
+		return mapError(err)
+	}
+	if state != "approved" {
+		return ErrConflict
+	}
+	var occupied int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM permits WHERE tenant_id=? AND slot=? AND state='executing'`, tenant, slot).Scan(&occupied); err != nil {
+		return err
+	}
+	if occupied > 0 {
+		return ErrConflict
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE permits SET state='executing',version=version+1 WHERE tenant_id=? AND id=? AND version=?`, tenant, id, expected)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows != 1 {
+		return ErrConflict
+	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		var slot, state string
-		if err := tx.QueryRowContext(ctx, `SELECT slot,state FROM permits WHERE tenant_id=? AND id=?`, tenant, id).Scan(&slot, &state); err != nil {
-			return mapError(err)
-		}
-		if state != "approved" {
-			return ErrConflict
-		}
-		var occupied int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM permits WHERE tenant_id=? AND slot=? AND state='executing'`, tenant, slot).Scan(&occupied); err != nil {
-			return err
-		}
-		if occupied > 0 {
-			return ErrConflict
-		}
-		result, err := tx.ExecContext(ctx, `UPDATE permits SET state='executing',version=version+1 WHERE tenant_id=? AND id=? AND version=?`, tenant, id, expected)
-		if err != nil {
-			return err
-		}
-		rows, _ := result.RowsAffected()
-		if rows != 1 {
-			return ErrConflict
-		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO outbox(tenant_id,entity_id,payload) VALUES(?,?,?)`, tenant, id, "permit_executing")
 		return err
 	})

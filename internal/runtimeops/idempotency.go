@@ -27,16 +27,21 @@ func (s *Store) SaveCommand(ctx context.Context, c Command) error {
 }
 
 func (s *Store) ReplayCommand(ctx context.Context, tenant, method, path, key, hash string) ([]byte, error) {
-	var storedHash string
-	var response []byte
-	err := s.db.QueryRowContext(ctx, `SELECT request_hash,response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, tenant, method, path, key).Scan(&storedHash, &response)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
+		return nil, err
+	}
+	var response []byte
+	err = tx.QueryRowContext(ctx, `SELECT response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, tenant, method, path, key).Scan(&response)
+	if err != nil {
+		_ = tx.Rollback()
 		return nil, mapError(err)
 	}
-	if storedHash != hash {
-		return nil, ErrConflict
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
-	return append([]byte(nil), response...), nil
+	copyResponse := append([]byte(nil), response...)
+	return copyResponse, nil
 }
 
 func (s *Store) SaveCheckpoint(ctx context.Context, c Checkpoint) error {

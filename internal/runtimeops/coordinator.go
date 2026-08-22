@@ -29,12 +29,12 @@ func (p *Pipeline) Run(ctx context.Context, steps map[string]Step, order []strin
 		if step == nil {
 			return fmt.Errorf("step %s: %w", name, ErrNotFound)
 		}
-		if err := step(ctx); err != nil {
-			return fmt.Errorf("step %s: %w", name, err)
-		}
 		p.mu.Lock()
 		p.completed[name] = true
 		p.mu.Unlock()
+		if err := step(ctx); err != nil {
+			return fmt.Errorf("step %s: %w", name, err)
+		}
 	}
 	return nil
 }

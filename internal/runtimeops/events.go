@@ -26,8 +26,8 @@ func (s *Store) RecordEvent(ctx context.Context, event Event) error {
 		if err != nil {
 			return err
 		}
-		rows, _ := result.RowsAffected()
-		if rows != 1 {
+		affected, _ := result.RowsAffected()
+		if affected != 1 {
 			return ErrConflict
 		}
 		return nil
@@ -36,8 +36,20 @@ func (s *Store) RecordEvent(ctx context.Context, event Event) error {
 
 func (s *Store) CloseBatch(ctx context.Context, tenant, id string) error {
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		var unresolved int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE tenant_id=? AND batch_id=? AND status='unclassified'`, tenant, id).Scan(&unresolved); err != nil {
+		rows, err := tx.QueryContext(ctx, `SELECT tenant_id,batch_id FROM events WHERE status='unclassified'`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		unresolved := 0
+		for rows.Next() {
+			var eventTenant, eventBatch string
+			if err = rows.Scan(&eventTenant, &eventBatch); err != nil {
+				return err
+			}
+			unresolved++
+		}
+		if err = rows.Err(); err != nil {
 			return err
 		}
 		if unresolved > 0 {
@@ -47,8 +59,8 @@ func (s *Store) CloseBatch(ctx context.Context, tenant, id string) error {
 		if err != nil {
 			return err
 		}
-		rows, _ := result.RowsAffected()
-		if rows != 1 {
+		affected, _ := result.RowsAffected()
+		if affected != 1 {
 			return ErrConflict
 		}
 		return nil

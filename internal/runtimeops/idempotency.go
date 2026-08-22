@@ -50,10 +50,7 @@ func (s *Store) SaveCheckpoint(ctx context.Context, c Checkpoint) error {
 		if err != nil {
 			return err
 		}
-		if c.Generation <= generation {
-			return ErrConflict
-		}
-		result, err := tx.ExecContext(ctx, `UPDATE checkpoints SET generation=?,payload=? WHERE tenant_id=? AND stream=? AND generation=?`, c.Generation, append([]byte(nil), c.Payload...), c.TenantID, c.Stream, generation)
+		result, err := tx.ExecContext(ctx, `UPDATE checkpoints SET generation=?,payload=? WHERE tenant_id=? AND stream=?`, c.Generation, append([]byte(nil), c.Payload...), c.TenantID, c.Stream)
 		if err != nil {
 			return err
 		}

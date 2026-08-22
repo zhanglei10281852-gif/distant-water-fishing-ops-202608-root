@@ -72,17 +72,22 @@ func (s *Store) ExecutePermit(ctx context.Context, tenant, id string, expected i
 }
 
 func (s *Store) CancelPermit(ctx context.Context, tenant, id string, expected int64) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE permits SET state='cancelled',version=version+1 WHERE tenant_id=? AND id=? AND state IN ('pending','approved') AND version=?`, tenant, id, expected)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows != 1 {
-		return ErrConflict
-	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		_, err = tx.ExecContext(ctx, `INSERT INTO outbox(tenant_id,entity_id,payload) VALUES(?,?,?)`, tenant, id, "permit_cancelled")
-		return err
+		result, err := tx.ExecContext(ctx, `UPDATE permits SET state='cancelled',version=version+1 WHERE tenant_id=? AND id=? AND state IN ('pending','approved') AND version=?`, tenant, id, expected)
+		if err != nil {
+			return err
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return ErrConflict
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO outbox(tenant_id,entity_id,payload) VALUES(?,?,?)`, tenant, id, "permit_cancelled"); err != nil {
+			return fmt.Errorf("write cancellation notice: %w", err)
+		}
+		return nil
 	})
 }
 

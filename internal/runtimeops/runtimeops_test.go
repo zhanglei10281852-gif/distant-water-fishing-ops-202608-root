@@ -79,3 +79,45 @@ func TestCommandHappyPath(t *testing.T) {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
 }
+
+func TestPermitCancelVersionGuard(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if err := s.CreatePermit(ctx, Permit{ID: "p", TenantID: "t", Slot: "s", State: "approved", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CancelPermit(ctx, "t", "p", 99); !IsConflict(err) {
+		t.Fatalf("expected conflict on stale version, got %v", err)
+	}
+	p, err := s.Permit(ctx, "t", "p")
+	if err != nil || p.State != "approved" || p.Version != 1 {
+		t.Fatalf("state must be unchanged on guard failure: %+v err=%v", p, err)
+	}
+	if n, _ := s.OutboxCount(ctx, "t", "p"); n != 0 {
+		t.Fatalf("no notice must be written on guard failure: outbox=%d", n)
+	}
+}
+
+func TestPermitCancelAtomicNotice(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if err := s.CreatePermit(ctx, Permit{ID: "p", TenantID: "t", Slot: "s", State: "approved", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CancelPermit(ctx, "t", "p", 1); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	p, err := s.Permit(ctx, "t", "p")
+	if err != nil || p.State != "cancelled" || p.Version != 2 {
+		t.Fatalf("expected cancelled v2: %+v err=%v", p, err)
+	}
+	if n, _ := s.OutboxCount(ctx, "t", "p"); n != 1 {
+		t.Fatalf("exactly one notice must accompany cancellation: outbox=%d", n)
+	}
+	if err := s.CancelPermit(ctx, "t", "p", 2); !IsConflict(err) {
+		t.Fatalf("cancelling an already-cancelled permit must conflict, got %v", err)
+	}
+	if n, _ := s.OutboxCount(ctx, "t", "p"); n != 1 {
+		t.Fatalf("duplicate cancellation must not add notices: outbox=%d", n)
+	}
+}

@@ -79,3 +79,50 @@ func TestCommandHappyPath(t *testing.T) {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
 }
+
+func TestReclaimJobsCancelledDoesNotCommit(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := s.CreateJob(ctx, Job{ID: "j", TenantID: "t", State: "pending", Payload: "x", MaxAttempts: 3, AvailableAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimJobs(ctx, "t", now, 1, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.ReclaimJobs(cancelled, "t", now.Add(2*time.Minute)); err == nil {
+		t.Fatal("expected reclaim to fail when context cancelled")
+	}
+	j, err := s.Job(ctx, "t", "j")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.State != "running" {
+		t.Fatalf("cancelled reclaim committed, job state=%s", j.State)
+	}
+}
+
+func TestReclaimJobsReclaimsExpired(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := s.CreateJob(ctx, Job{ID: "j", TenantID: "t", State: "pending", Payload: "x", MaxAttempts: 3, AvailableAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimJobs(ctx, "t", now, 1, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	count, err := s.ReclaimJobs(ctx, "t", now.Add(2*time.Minute))
+	if err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	j, err := s.Job(ctx, "t", "j")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.State != "failed" || j.LeaseUntil != nil {
+		t.Fatalf("job not reclaimed: state=%s lease=%v", j.State, j.LeaseUntil)
+	}
+}

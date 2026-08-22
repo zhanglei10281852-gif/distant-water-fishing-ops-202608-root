@@ -75,7 +75,15 @@ func Retry(ctx context.Context, attempts int, backoff time.Duration, operation f
 		if attempt == attempts-1 {
 			break
 		}
-		time.Sleep(backoff)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		case <-timer.C:
+		}
 	}
 	return last
 }

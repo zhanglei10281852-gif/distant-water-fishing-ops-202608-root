@@ -52,10 +52,7 @@ func (p *Pipeline) Snapshot() map[string]bool {
 func (p *Pipeline) Restore(snapshot map[string]bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.completed = make(map[string]bool, len(snapshot))
-	for key, value := range snapshot {
-		p.completed[key] = value
-	}
+	p.completed = snapshot
 }
 
 func Retry(ctx context.Context, attempts int, backoff time.Duration, operation func(context.Context) error) error {

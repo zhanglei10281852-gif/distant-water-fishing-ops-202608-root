@@ -8,34 +8,21 @@ import (
 
 func (s *Store) SaveCommand(ctx context.Context, c Command) error {
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT tenant_id,request_hash,response FROM commands WHERE key=? ORDER BY tenant_id LIMIT 1`, c.Key)
-		if err != nil {
-			return err
-		}
-		if rows.Next() {
-			var storedTenant, hash string
-			var response []byte
-			if err = rows.Scan(&storedTenant, &hash, &response); err != nil {
-				rows.Close()
-				return err
-			}
-			if err = rows.Close(); err != nil {
-				return err
-			}
-			if hash != c.RequestHash {
+		var storedHash string
+		err := tx.QueryRowContext(ctx, `SELECT request_hash FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`,
+			c.TenantID, c.Method, c.Path, c.Key).Scan(&storedHash)
+		if err == nil {
+			if storedHash != c.RequestHash {
 				return ErrConflict
 			}
 			return nil
 		}
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		if err = rows.Close(); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		copyResponse := append([]byte(nil), c.Response...)
-		_, err = tx.ExecContext(ctx, `INSERT INTO commands(tenant_id,method,path,key,request_hash,response) VALUES(?,?,?,?,?,?)`, c.TenantID, c.Method, c.Path, c.Key, c.RequestHash, copyResponse)
+		_, err = tx.ExecContext(ctx, `INSERT INTO commands(tenant_id,method,path,key,request_hash,response) VALUES(?,?,?,?,?,?)`,
+			c.TenantID, c.Method, c.Path, c.Key, c.RequestHash, copyResponse)
 		return err
 	})
 }

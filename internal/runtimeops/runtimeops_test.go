@@ -79,3 +79,50 @@ func TestCommandHappyPath(t *testing.T) {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
 }
+
+func TestCommandTenantIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	fleetA := Command{TenantID: "fleet-a", Method: "POST", Path: "/missions", Key: "shared-key", RequestHash: "hash-a", Response: []byte("resp-a")}
+	fleetB := Command{TenantID: "fleet-b", Method: "POST", Path: "/missions", Key: "shared-key", RequestHash: "hash-b", Response: []byte("resp-b")}
+	if err := s.SaveCommand(ctx, fleetA); err != nil {
+		t.Fatalf("save fleet-a: %v", err)
+	}
+	// Same idempotency key, different tenant and payload must not collide with fleet A.
+	if err := s.SaveCommand(ctx, fleetB); err != nil {
+		t.Fatalf("save fleet-b: %v", err)
+	}
+	bodyA, err := s.ReplayCommand(ctx, fleetA.TenantID, fleetA.Method, fleetA.Path, fleetA.Key, fleetA.RequestHash)
+	if err != nil || string(bodyA) != "resp-a" {
+		t.Fatalf("fleet-a replay body=%q err=%v", bodyA, err)
+	}
+	bodyB, err := s.ReplayCommand(ctx, fleetB.TenantID, fleetB.Method, fleetB.Path, fleetB.Key, fleetB.RequestHash)
+	if err != nil || string(bodyB) != "resp-b" {
+		t.Fatalf("fleet-b replay body=%q err=%v", bodyB, err)
+	}
+	// Replaying fleet A's record with fleet B's hash must still be a payload conflict within fleet A.
+	if _, err := s.ReplayCommand(ctx, fleetA.TenantID, fleetA.Method, fleetA.Path, fleetA.Key, fleetB.RequestHash); err != ErrConflict {
+		t.Fatalf("fleet-a cross-payload replay err=%v want ErrConflict", err)
+	}
+}
+
+func TestCommandSameTenantDifferentPayloadConflicts(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	original := Command{TenantID: "fleet-a", Method: "POST", Path: "/missions", Key: "shared-key", RequestHash: "hash-a", Response: []byte("resp-a")}
+	if err := s.SaveCommand(ctx, original); err != nil {
+		t.Fatalf("save original: %v", err)
+	}
+	// Same tenant, same operation, same key, but a different payload must be rejected.
+	diverged := original
+	diverged.RequestHash = "hash-a-prime"
+	diverged.Response = []byte("resp-prime")
+	if err := s.SaveCommand(ctx, diverged); err != ErrConflict {
+		t.Fatalf("diverged payload err=%v want ErrConflict", err)
+	}
+	// The original response is untouched.
+	body, err := s.ReplayCommand(ctx, original.TenantID, original.Method, original.Path, original.Key, original.RequestHash)
+	if err != nil || string(body) != "resp-a" {
+		t.Fatalf("replay body=%q err=%v", body, err)
+	}
+}

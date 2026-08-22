@@ -80,7 +80,11 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 
 func (s *Store) CompleteJob(ctx context.Context, tenant, id string, attempt int) error {
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='done',lease_until=NULL WHERE tenant_id=? AND id=? AND state='running' AND attempts=?`, tenant, id, attempt)
+		var current int
+		if err := tx.QueryRowContext(ctx, `SELECT attempts FROM jobs WHERE tenant_id=? AND id=? AND state='running'`, tenant, id).Scan(&current); err != nil {
+			return mapError(err)
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='done',lease_until=NULL WHERE tenant_id=? AND id=? AND state='running'`, tenant, id)
 		if err != nil {
 			return err
 		}

@@ -32,50 +32,40 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 	if limit < 1 {
 		limit = 1
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM jobs WHERE tenant_id=? AND state IN ('pending','failed') AND available_at<=? AND (lease_until IS NULL OR lease_until<=?) ORDER BY available_at,id LIMIT ?`, tenant, unix(now), unix(now), limit)
+	if err != nil {
+		return nil, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err = rows.Close(); err != nil {
+		return nil, err
+	}
 	out := []Job{}
-	err := withTx(ctx, s.db, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM jobs WHERE tenant_id=? AND state IN ('pending','failed') AND available_at<=? AND (lease_until IS NULL OR lease_until<=?) ORDER BY available_at,id LIMIT ?`, tenant, unix(now), unix(now), limit)
+	until := now.Add(lease)
+	for _, id := range ids {
+		result, err := s.db.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now))
 		if err != nil {
-			return err
+			return nil, err
 		}
-		ids := []string{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			ids = append(ids, id)
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			continue
 		}
-		if err = rows.Close(); err != nil {
-			return err
+		j, err := s.Job(ctx, tenant, id)
+		if err != nil {
+			return nil, err
 		}
-		until := now.Add(lease)
-		for _, id := range ids {
-			result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now))
-			if err != nil {
-				return err
-			}
-			n, _ := result.RowsAffected()
-			if n != 1 {
-				continue
-			}
-			var j Job
-			var available int64
-			var leaseValue *int64
-			if err = tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id).Scan(&j.ID, &j.TenantID, &j.State, &j.Payload, &j.Attempts, &j.MaxAttempts, &available, &leaseValue); err != nil {
-				return err
-			}
-			j.AvailableAt = fromUnix(available)
-			if leaseValue != nil {
-				t := fromUnix(*leaseValue)
-				j.LeaseUntil = &t
-			}
-			out = append(out, j)
-		}
-		return nil
-	})
-	return out, err
+		out = append(out, j)
+	}
+	return out, nil
 }
 
 func (s *Store) CompleteJob(ctx context.Context, tenant, id string, attempt int) error {

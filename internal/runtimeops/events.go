@@ -11,24 +11,33 @@ func (s *Store) CreateBatch(ctx context.Context, tenant, id, state string) error
 }
 
 func (s *Store) RecordEvent(ctx context.Context, event Event) error {
-	var state string
-	if err := s.db.QueryRowContext(ctx, `SELECT state FROM batches WHERE id=? AND tenant_id=?`, event.BatchID, event.TenantID).Scan(&state); err != nil {
-		return mapError(err)
-	}
-	if state != "collecting" {
-		return ErrConflict
-	}
-	result, err := s.db.ExecContext(ctx, `UPDATE batches SET event_count=event_count+1 WHERE id=? AND tenant_id=? AND state='collecting'`, event.BatchID, event.TenantID)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows != 1 {
-		return ErrConflict
-	}
+	// The unique key (tenant_id, id) is the replay guard. Insert the event
+	// first so that a duplicate replay fails the unique constraint BEFORE the
+	// batch summary is touched. The state check, insert, and counter bump all
+	// run in one transaction, so a failed replay leaves every aggregate
+	// untouched while a genuinely new event still accumulates normally.
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
-		_, err = tx.ExecContext(ctx, `INSERT INTO events(id,tenant_id,batch_id,status,magnitude) VALUES(?,?,?,?,?)`, event.ID, event.TenantID, event.BatchID, event.Status, event.Magnitude)
-		return err
+		var state string
+		if err := tx.QueryRowContext(ctx, `SELECT state FROM batches WHERE id=? AND tenant_id=?`, event.BatchID, event.TenantID).Scan(&state); err != nil {
+			return mapError(err)
+		}
+		if state != "collecting" {
+			return ErrConflict
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO events(id,tenant_id,batch_id,status,magnitude) VALUES(?,?,?,?,?)`, event.ID, event.TenantID, event.BatchID, event.Status, event.Magnitude); err != nil {
+			// Duplicate replay: the unique constraint rejects the insert and
+			// the transaction is aborted before event_count is incremented.
+			return mapError(err)
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE batches SET event_count=event_count+1 WHERE id=? AND tenant_id=? AND state='collecting'`, event.BatchID, event.TenantID)
+		if err != nil {
+			return err
+		}
+		rows, _ := result.RowsAffected()
+		if rows != 1 {
+			return ErrConflict
+		}
+		return nil
 	})
 }
 

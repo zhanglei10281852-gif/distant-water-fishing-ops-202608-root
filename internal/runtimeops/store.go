@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -87,8 +88,18 @@ func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) (err error)
 }
 
 func mapError(err error) error {
+	if err == nil {
+		return nil
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
+	}
+	// modernc.org/sqlite reports a unique/PK constraint violation as
+	// "constraint failed: UNIQUE constraint failed: ..." (SQLITE_CONSTRAINT, code 1555).
+	// Treat any constraint failure as a conflict so replayed duplicates are
+	// rejected cleanly instead of surfacing as an opaque driver error.
+	if strings.Contains(strings.ToLower(err.Error()), "constraint") {
+		return ErrConflict
 	}
 	return err
 }

@@ -31,11 +31,15 @@ func (s *Store) ReplayCommand(ctx context.Context, tenant, method, path, key, ha
 	if err != nil {
 		return nil, err
 	}
-	var response []byte
-	err = tx.QueryRowContext(ctx, `SELECT response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, tenant, method, path, key).Scan(&response)
+	var stored, response string
+	err = tx.QueryRowContext(ctx, `SELECT request_hash,response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, tenant, method, path, key).Scan(&stored, &response)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, mapError(err)
+	}
+	if stored != hash {
+		_ = tx.Rollback()
+		return nil, ErrConflict
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, err

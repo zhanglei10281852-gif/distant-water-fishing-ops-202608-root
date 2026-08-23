@@ -2,6 +2,7 @@ package runtimeops
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -49,6 +50,40 @@ func TestEventHappyPath(t *testing.T) {
 	}
 	if err := s.CloseBatch(ctx, "t", "b"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCloseBatchRejectsUnclassified(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if err := s.CreateBatch(ctx, "t", "b", "collecting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvent(ctx, Event{ID: "e", TenantID: "t", BatchID: "b", Status: "unclassified", Magnitude: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseBatch(ctx, "t", "b"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("close unclassified batch: err=%v want %v", err, ErrConflict)
+	}
+	state, _, err := s.BatchState(ctx, "t", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != "collecting" {
+		t.Fatalf("state=%q want collecting after rejected close", state)
+	}
+	if err := s.ClassifyEvent(ctx, "t", "e", "classified"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseBatch(ctx, "t", "b"); err != nil {
+		t.Fatalf("close classified batch: err=%v", err)
+	}
+	state, _, err = s.BatchState(ctx, "t", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != "closed" {
+		t.Fatalf("state=%q want closed after close", state)
 	}
 }
 

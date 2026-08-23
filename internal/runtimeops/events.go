@@ -35,20 +35,20 @@ func (s *Store) RecordEvent(ctx context.Context, event Event) error {
 }
 
 func (s *Store) CloseBatch(ctx context.Context, tenant, id string) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE batches SET state='closed' WHERE id=? AND tenant_id=? AND state='collecting'`, id, tenant)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows != 1 {
-		return ErrConflict
-	}
 	return withTx(ctx, s.db, func(tx *sql.Tx) error {
 		var unresolved int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE tenant_id=? AND batch_id=? AND status='unclassified'`, tenant, id).Scan(&unresolved); err != nil {
 			return err
 		}
 		if unresolved > 0 {
+			return ErrConflict
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE batches SET state='closed' WHERE id=? AND tenant_id=? AND state='collecting'`, id, tenant)
+		if err != nil {
+			return err
+		}
+		rows, _ := result.RowsAffected()
+		if rows != 1 {
 			return ErrConflict
 		}
 		return nil

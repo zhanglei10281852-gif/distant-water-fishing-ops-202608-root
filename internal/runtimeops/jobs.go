@@ -52,8 +52,19 @@ func (s *Store) ClaimJobs(ctx context.Context, tenant string, now time.Time, lim
 		}
 		until := now.Add(lease)
 		for _, id := range ids {
-			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now)); err != nil {
+			result, err := tx.ExecContext(ctx, `UPDATE jobs SET state='running',attempts=attempts+1,lease_until=? WHERE tenant_id=? AND id=? AND state IN ('pending','failed') AND (lease_until IS NULL OR lease_until<=?)`, unix(until), tenant, id, unix(now))
+			if err != nil {
 				return err
+			}
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rowsAffected != 1 {
+				// The compare-and-set on state/attempts/lease did not match any row, so this
+				// caller never took ownership. Another worker may still claim the job, so it
+				// must not appear in the returned set.
+				continue
 			}
 			j, err := scanJob(tx.QueryRowContext(ctx, `SELECT id,tenant_id,state,payload,attempts,max_attempts,available_at,lease_until FROM jobs WHERE tenant_id=? AND id=?`, tenant, id))
 			if err != nil {

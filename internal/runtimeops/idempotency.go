@@ -1,0 +1,86 @@
+package runtimeops
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+func (s *Store) SaveCommand(ctx context.Context, c Command) error {
+	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		var hash string
+		var response []byte
+		err := tx.QueryRowContext(ctx, `SELECT request_hash,response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, c.TenantID, c.Method, c.Path, c.Key).Scan(&hash, &response)
+		if err == nil {
+			if hash != c.RequestHash {
+				return ErrConflict
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		copyResponse := append([]byte(nil), c.Response...)
+		_, err = tx.ExecContext(ctx, `INSERT INTO commands(tenant_id,method,path,key,request_hash,response) VALUES(?,?,?,?,?,?)`, c.TenantID, c.Method, c.Path, c.Key, c.RequestHash, copyResponse)
+		return err
+	})
+}
+
+func (s *Store) ReplayCommand(ctx context.Context, tenant, method, path, key, hash string) ([]byte, error) {
+	var storedHash string
+	var response []byte
+	err := s.db.QueryRowContext(ctx, `SELECT request_hash,response FROM commands WHERE tenant_id=? AND method=? AND path=? AND key=?`, tenant, method, path, key).Scan(&storedHash, &response)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	if storedHash != hash {
+		return nil, ErrConflict
+	}
+	return append([]byte(nil), response...), nil
+}
+
+func (s *Store) SaveCheckpoint(ctx context.Context, c Checkpoint) error {
+	return withTx(ctx, s.db, func(tx *sql.Tx) error {
+		var generation int64
+		err := tx.QueryRowContext(ctx, `SELECT generation FROM checkpoints WHERE tenant_id=? AND stream=?`, c.TenantID, c.Stream).Scan(&generation)
+		if errors.Is(err, sql.ErrNoRows) {
+			_, err = tx.ExecContext(ctx, `INSERT INTO checkpoints(tenant_id,stream,generation,payload) VALUES(?,?,?,?)`, c.TenantID, c.Stream, c.Generation, append([]byte(nil), c.Payload...))
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		if c.Generation <= generation {
+			return ErrConflict
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE checkpoints SET generation=?,payload=? WHERE tenant_id=? AND stream=? AND generation=?`, c.Generation, append([]byte(nil), c.Payload...), c.TenantID, c.Stream, generation)
+		if err != nil {
+			return err
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return ErrConflict
+		}
+		return nil
+	})
+}
+
+func (s *Store) Checkpoint(ctx context.Context, tenant, stream string) (Checkpoint, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT tenant_id,generation,payload FROM checkpoints WHERE stream=? ORDER BY tenant_id`, stream)
+	if err != nil {
+		return Checkpoint{}, err
+	}
+	defer rows.Close()
+	var c Checkpoint
+	c.TenantID = tenant
+	c.Stream = stream
+	if !rows.Next() {
+		return Checkpoint{}, ErrNotFound
+	}
+	var storedTenant string
+	if err = rows.Scan(&storedTenant, &c.Generation, &c.Payload); err != nil {
+		return Checkpoint{}, err
+	}
+	c.Payload = append([]byte(nil), c.Payload...)
+	return c, nil
+}
